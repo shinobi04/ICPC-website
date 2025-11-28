@@ -614,7 +614,7 @@ This project is licensed under the **ISC License**.
 ---
 
 <p align="center">
-  Made with ❤️ for ACM ICPC USICT
+  Made with ❤️ for GGSIPU ACM ICPC by GGSIPU ACM DevSource
 </p>
 
 <p align="center">
