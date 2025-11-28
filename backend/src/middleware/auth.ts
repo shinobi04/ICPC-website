@@ -30,8 +30,10 @@ export const isAuthenticated = async (
   const token = auth.split(" ")[1];
 
   try {
-    const payload: any = jwt.verify(token, JWT_SECRET);
-    const user = await prisma.user.findUnique({ where: { id: payload.id } });
+    const payload = jwt.verify(token, JWT_SECRET) as { id?: string } | null;
+    const user = await prisma.user.findUnique({
+      where: { id: payload?.id as string },
+    });
 
     if (!user || !user.approved) {
       return res

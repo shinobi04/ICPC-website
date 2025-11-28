@@ -1,5 +1,3 @@
-erver.js`
-
 # Backend Folder Structure
 
 This document provides a clear, navigable view of the `backend/` workspace. Use it to quickly find entry points, scripts, and important folders.
@@ -180,5 +178,3 @@ npx prisma migrate dev --name init
 ```
 
 ---
-
-If you want a `tree`-style text file or a JSON export of this structure, tell me which format and I will add `STRUCTURE-tree.txt` or `STRUCTURE.json` to the `backend/` folder.
