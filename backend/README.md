@@ -1,80 +1,156 @@
-# Backend
+# Backend — ICPC Website
 
-Express + TypeScript backend server for ICPC Website.
+Clean, developer-focused documentation for the Express + TypeScript backend powering the ICPC Website.
 
-This project implements a modular backend with Prisma + PostgreSQL, JWT auth, role-based access, cron jobs, and OpenAI integration (optional).
+This backend provides user authentication, contest and task management, Prisma + PostgreSQL persistence, cron-based background jobs (including Judge0 poller), and optional OpenAI integration for an AI chatbot.
 
-## Setup
+**Quick links:**
 
-1. Copy `.env.example` to `.env` and update values (Postgres URL, JWT secret, OpenAI key optional).
+- **Source:** `./src`
+- **Prisma schema:** `./prisma/schema.prisma`
+- **Env example:** `./.env.example`
 
-2. Install dependencies:
+## Features
+
+- JWT authentication with role-based access
+- Contests, tasks, profile management
+- Background cron jobs (leaderboards, Judge0 polling)
+- Judge0 integration for code execution (configurable)
+- Prisma ORM with migrations and seed scripts
+- Unit & integration test scaffolding (Jest + supertest)
+
+## Tech stack
+
+- Node.js, TypeScript, Express
+- PostgreSQL + Prisma
+- Jest + ts-jest + supertest
+- GitHub Actions for CI
+
+## Requirements
+
+- Node.js (recommended v18+)
+- npm or pnpm
+- Docker & Docker Compose (optional for local DB)
+
+## Environment variables
+
+Copy `.env.example` to `.env` and update the values. Important variables:
+
+- `DATABASE_URL` : Postgres connection string used by Prisma
+- `JWT_SECRET` : Secret for signing JWTs
+- `PORT` : Server port (default `5000`)
+- `OPENAI_API_KEY` : Optional, for AI chatbot
+- `JUDGE0_URL` : Optional, Judge0 base URL (e.g. `https://judge0.example.com`)
+- `JUDGE0_KEY` : Optional, Judge0 API key
+- `JUDGE0_KEY_HEADER` : Optional, header name for Judge0 key (default `X-Auth-Token`)
+
+See `.env.example` for the full list.
+
+## Quickstart — Local (PowerShell)
+
+1. Install dependencies
 
 ```powershell
 cd "c:\Users\utkyd\Documents\WEB DEVELOPMENT\ICPC-website\backend"
 npm install
 ```
 
-3. Generate Prisma client & run migrations:
+2. Generate Prisma client and run migrations
 
 ```powershell
 npx prisma generate
 npx prisma migrate dev --name init
 ```
 
-4. Seed sample data (creates an admin placeholder):
+3. Seed sample data (optional)
 
 ```powershell
 npm run seed
 ```
 
-5. Run in development:
+4. Run in development
 
 ```powershell
 npm run dev
 ```
 
-## Quick API reference
+The API will be available at `http://localhost:<PORT>` (default `5000`).
 
-- `GET /api/health` - health check
-- `POST /api/auth/register` - register user (student/alumni)
-- `POST /api/auth/login` - login to receive JWT
-- `POST /api/auth/approve/:id` - admin approves user
-- `POST /api/profile` - create/update profile (auth required)
-- `POST /api/tasks/:taskId/submit` - submit task completion (auth)
-- `POST /api/ai/chat` - AI chatbot (auth)
+## Useful scripts
 
-For more endpoints see `src/routes`.
+- `npm run dev` : Start dev server with ts-node / nodemon
+- `npm run build` : Compile to `dist/`
+- `npm start` : Run compiled server from `dist/`
+- `npm run seed` : Run database seed script
+- `npm test` : Run unit & integration tests (conditional on env)
+- `npm run test:unit` : Run unit tests only
+- `npm run test:integration` : Run integration tests (requires DB)
 
-## Notes
+## Prisma & database
 
-- After updating Prisma schema, run `npx prisma generate` and `npx prisma migrate dev`.
-- The OpenAI integration uses `OPENAI_API_KEY` from the environment; if not provided, the AI route returns a placeholder.
+- Generate client: `npx prisma generate`
+- Create/migrate schema: `npx prisma migrate dev --name my_migration`
+- Open Studio: `npx prisma studio`
 
-## Swagger UI
+If you prefer Docker for Postgres, use the included `docker-compose.yml` (or run the commands in `docs/DEMO.md`).
 
-Open the API docs UI at: `http://localhost:5000/api/docs/ui`
+## Docker
 
-## Postman
-
-Import `postman_collection.json` to test endpoints quickly. Use the `{{token}}` and `{{admin_token}}` variables for Authorization.
-
-## Testing (integration)
-
-To run integration tests you should provide a test database. Steps:
-
-1. Copy `.env.test.example` to `.env.test` and update `DATABASE_URL_TEST`.
-2. Apply migrations to your test DB (locally):
+Build and run a production image (example):
 
 ```powershell
-npx prisma migrate dev --schema=./prisma/schema.prisma --name test_init
+docker build -t icpc-backend:local .
+docker run -p 5000:5000 --env-file .env icpc-backend:local
 ```
 
-3. Run tests:
+Or use `docker-compose up` for an app + Postgres combination.
+
+## CI
+
+GitHub Actions are configured to run migrations, seed the DB, build the app, and run tests. See `.github/workflows/ci.yml` for details.
+
+## Judge0 (code execution)
+
+This project integrates with Judge0 for executing code submissions. Configure these env vars when using Judge0:
+
+- `JUDGE0_URL` : Base URL of the Judge0 API
+- `JUDGE0_KEY` : API key (if required)
+- `JUDGE0_KEY_HEADER` : Header name for the key (defaults to `X-Auth-Token`)
+- `JUDGE0_TIMEOUT_MS` : Optional HTTP timeout (ms) for Judge0 requests
+
+The backend normalizes Judge0 responses and includes a poller to update submission statuses.
+
+## Testing
+
+Unit tests mock Prisma and external services so they run without a DB. Integration tests expect a configured test database (`.env.test`).
+
+Run unit tests:
 
 ```powershell
-npm test
+npm run test:unit
 ```
 
-Note: integration tests in `tests/integration` are templates that skip if `DATABASE_URL_TEST` is not configured.
+Run integration tests (ensure `DATABASE_URL_TEST` is set and migrations applied):
 
+```powershell
+npm run test:integration
+```
+
+## Contributing
+
+If you'd like to contribute:
+
+1. Fork the repo and create a feature branch
+2. Run tests and linters
+3. Open a PR describing the change and include relevant tests
+
+## Useful commands (PowerShell)
+
+```powershell
+# install deps
+cd "c:\Users\utkyd\Documents\WEB DEVELOPMENT\ICPC-website\backend"; npm install
+# prisma + migrations
+npx prisma generate; npx prisma migrate dev --name init
+# seed + start
+npm run seed; npm run dev
+```
