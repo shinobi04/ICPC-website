@@ -139,7 +139,7 @@ export default function AdminDashboardPage() {
   // Task edit form state
   const [editTaskTitle, setEditTaskTitle] = useState("");
   const [editTaskDesc, setEditTaskDesc] = useState("");
-  const [editTaskPoints, setEditTaskPoints] = useState(0);
+  const [editTaskPoints, setEditTaskPoints] = useState("");
   const [editTaskDueDate, setEditTaskDueDate] = useState("");
   const [editTaskAssignmentType, setEditTaskAssignmentType] = useState<"all" | "specific">("all");
   const [editSelectedUserIds, setEditSelectedUserIds] = useState<string[]>([]);
@@ -175,7 +175,7 @@ export default function AdminDashboardPage() {
 
   const [taskTitle, setTaskTitle] = useState("");
   const [taskDesc, setTaskDesc] = useState("");
-  const [taskPoints, setTaskPoints] = useState(0);
+  const [taskPoints, setTaskPoints] = useState("");
 
   const [announcementTitle, setAnnouncementTitle] = useState("");
   const [announcementContent, setAnnouncementContent] = useState("");
@@ -536,14 +536,14 @@ export default function AdminDashboardPage() {
       await createTask({
         title: taskTitle,
         description: taskDesc || undefined,
-        points: taskPoints,
+        points: taskPoints ? parseInt(taskPoints) : 0,
         dueDate: taskDueDate || undefined,
         assignedTo: taskAssignmentType === "specific" ? selectedUserIds : undefined,
       });
       showMessage("success", "Task created successfully!");
       setTaskTitle("");
       setTaskDesc("");
-      setTaskPoints(0);
+      setTaskPoints("");
       setTaskDueDate("");
       setTaskAssignmentType("all");
       setSelectedUserIds([]);
@@ -588,7 +588,7 @@ export default function AdminDashboardPage() {
     setEditingTaskId(task.id);
     setEditTaskTitle(task.title);
     setEditTaskDesc(task.description || "");
-    setEditTaskPoints(task.points);
+    setEditTaskPoints(String(task.points));
     setEditTaskDueDate(task.dueDate ? new Date(task.dueDate).toISOString().slice(0, 16) : "");
     setEditTaskAssignmentType(task.assignedTo && task.assignedTo.length > 0 ? "specific" : "all");
     setEditSelectedUserIds(task.assignedTo || []);
@@ -598,7 +598,7 @@ export default function AdminDashboardPage() {
     setEditingTaskId(null);
     setEditTaskTitle("");
     setEditTaskDesc("");
-    setEditTaskPoints(0);
+    setEditTaskPoints("");
     setEditTaskDueDate("");
     setEditTaskAssignmentType("all");
     setEditSelectedUserIds([]);
@@ -609,7 +609,7 @@ export default function AdminDashboardPage() {
       await updateTask(taskId, {
         title: editTaskTitle,
         description: editTaskDesc || undefined,
-        points: editTaskPoints,
+        points: editTaskPoints ? parseInt(editTaskPoints) : 0,
         dueDate: editTaskDueDate || null,
         assignedTo: editTaskAssignmentType === "specific" ? editSelectedUserIds : null,
       });
@@ -1466,7 +1466,7 @@ export default function AdminDashboardPage() {
                           min="0"
                           placeholder="100"
                           value={taskPoints}
-                          onChange={(e) => setTaskPoints(Number(e.target.value))}
+                          onChange={(e) => setTaskPoints(e.target.value)}
                           className="bg-gray-800 border-gray-700"
                           required
                         />
@@ -1618,7 +1618,7 @@ export default function AdminDashboardPage() {
                                       type="number"
                                       min="0"
                                       value={editTaskPoints}
-                                      onChange={(e) => setEditTaskPoints(Number(e.target.value))}
+                                      onChange={(e) => setEditTaskPoints(e.target.value)}
                                       className="bg-gray-800 border-gray-700 h-9"
                                     />
                                   </div>

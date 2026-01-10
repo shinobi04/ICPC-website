@@ -275,7 +275,7 @@ export default function TasksPage() {
                     )}
 
                     <div className="space-y-2 text-sm text-gray-500">
-                      {task.dueDate && (
+                      {task.dueDate && status.label !== "Completed" && (
                         <div className="flex items-center gap-2">
                           <Clock className="h-4 w-4" />
                           <span className={isOverdue ? "text-red-400" : ""}>
