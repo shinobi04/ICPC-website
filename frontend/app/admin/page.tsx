@@ -35,6 +35,10 @@ import {
   Copy,
   Pencil,
   Link2,
+  ChevronDown,
+  ChevronUp,
+  Globe,
+  User as UserIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -42,7 +46,6 @@ import {
   getPendingUsers,
   approveUser,
   updateUserRole,
-  createTask,
   getAnnouncements,
   createAnnouncement,
   getPendingBlogs,
@@ -56,6 +59,12 @@ import {
 } from "@/lib/adminService";
 import { getContests, Contest } from "@/lib/contestService";
 import { useSessionStore } from "@/store/useSessionStore";
+import { useTaskStore } from "@/store/useTaskStore";
+import {
+  Task,
+  Submission,
+  getSubmissionStatusColor,
+} from "@/lib/taskService";
 
 type TabType =
   | "users"
@@ -97,8 +106,43 @@ export default function AdminDashboardPage() {
     setEditingId,
   } = useSessionStore();
 
+  // Task store (Zustand)
+  const {
+    tasks,
+    submissions: taskSubmissions,
+    loading: tasksLoading,
+    submissionsLoading,
+    editingTaskId,
+    fetchTasks,
+    fetchTaskSubmissions,
+    createTask,
+    updateTask,
+    deleteTask: removeTask,
+    verifySubmission,
+    rejectSubmission,
+    setEditingTaskId,
+    clearSubmissions,
+  } = useTaskStore();
+
   // User filter
   const [userFilter, setUserFilter] = useState<"all" | "pending">("all");
+
+  // Task form state
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [taskAssignmentType, setTaskAssignmentType] = useState<"all" | "specific">("all");
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [verifyModalOpen, setVerifyModalOpen] = useState(false);
+  const [selectedSubmission, setSelectedSubmission] = useState<Submission | null>(null);
+  const [verifyPoints, setVerifyPoints] = useState<number>(0);
+
+  // Task edit form state
+  const [editTaskTitle, setEditTaskTitle] = useState("");
+  const [editTaskDesc, setEditTaskDesc] = useState("");
+  const [editTaskPoints, setEditTaskPoints] = useState(0);
+  const [editTaskDueDate, setEditTaskDueDate] = useState("");
+  const [editTaskAssignmentType, setEditTaskAssignmentType] = useState<"all" | "specific">("all");
+  const [editSelectedUserIds, setEditSelectedUserIds] = useState<string[]>([]);
 
   // Form states
   const [contestTitle, setContestTitle] = useState("");
@@ -169,6 +213,13 @@ export default function AdminDashboardPage() {
           break;
         case "sessions":
           await fetchSessions();
+          break;
+        case "tasks":
+          await Promise.all([
+            fetchTasks(),
+            // Also fetch users for assignment dropdown
+            getUsers().then((users) => setUsers(users)),
+          ]);
           break;
         case "announcements":
           const announcementsData = await getAnnouncements();
@@ -486,20 +537,128 @@ export default function AdminDashboardPage() {
         title: taskTitle,
         description: taskDesc || undefined,
         points: taskPoints,
+        dueDate: taskDueDate || undefined,
+        assignedTo: taskAssignmentType === "specific" ? selectedUserIds : undefined,
       });
       showMessage("success", "Task created successfully!");
       setTaskTitle("");
       setTaskDesc("");
       setTaskPoints(0);
+      setTaskDueDate("");
+      setTaskAssignmentType("all");
+      setSelectedUserIds([]);
     } catch (error: any) {
       showMessage(
         "error",
-        error.response?.data?.message || "Failed to create task"
+        error.response?.data?.error || error.message || "Failed to create task"
       );
     } finally {
       setLoading(false);
     }
   };
+
+  const handleDeleteTask = async (taskId: string) => {
+    if (!confirm("Are you sure you want to delete this task? This will also delete all submissions.")) return;
+    try {
+      await removeTask(taskId);
+      showMessage("success", "Task deleted successfully!");
+      if (expandedTaskId === taskId) {
+        setExpandedTaskId(null);
+        clearSubmissions();
+      }
+    } catch (error: any) {
+      showMessage(
+        "error",
+        error.response?.data?.error || error.message || "Failed to delete task"
+      );
+    }
+  };
+
+  const handleToggleSubmissions = async (taskId: string) => {
+    if (expandedTaskId === taskId) {
+      setExpandedTaskId(null);
+      clearSubmissions();
+    } else {
+      setExpandedTaskId(taskId);
+      await fetchTaskSubmissions(taskId);
+    }
+  };
+
+  const handleStartEditTask = (task: Task) => {
+    setEditingTaskId(task.id);
+    setEditTaskTitle(task.title);
+    setEditTaskDesc(task.description || "");
+    setEditTaskPoints(task.points);
+    setEditTaskDueDate(task.dueDate ? new Date(task.dueDate).toISOString().slice(0, 16) : "");
+    setEditTaskAssignmentType(task.assignedTo && task.assignedTo.length > 0 ? "specific" : "all");
+    setEditSelectedUserIds(task.assignedTo || []);
+  };
+
+  const handleCancelEditTask = () => {
+    setEditingTaskId(null);
+    setEditTaskTitle("");
+    setEditTaskDesc("");
+    setEditTaskPoints(0);
+    setEditTaskDueDate("");
+    setEditTaskAssignmentType("all");
+    setEditSelectedUserIds([]);
+  };
+
+  const handleSaveEditTask = async (taskId: string) => {
+    try {
+      await updateTask(taskId, {
+        title: editTaskTitle,
+        description: editTaskDesc || undefined,
+        points: editTaskPoints,
+        dueDate: editTaskDueDate || null,
+        assignedTo: editTaskAssignmentType === "specific" ? editSelectedUserIds : null,
+      });
+      showMessage("success", "Task updated successfully!");
+      handleCancelEditTask();
+    } catch (error: any) {
+      showMessage(
+        "error",
+        error.response?.data?.error || error.message || "Failed to update task"
+      );
+    }
+  };
+
+  const handleOpenVerifyModal = (submission: Submission, taskPoints: number) => {
+    setSelectedSubmission(submission);
+    setVerifyPoints(taskPoints);
+    setVerifyModalOpen(true);
+  };
+
+  const handleVerifySubmission = async () => {
+    if (!selectedSubmission) return;
+    try {
+      await verifySubmission(selectedSubmission.id, verifyPoints);
+      showMessage("success", `Submission verified! ${verifyPoints} points awarded.`);
+      setVerifyModalOpen(false);
+      setSelectedSubmission(null);
+    } catch (error: any) {
+      showMessage(
+        "error",
+        error.response?.data?.error || error.message || "Failed to verify submission"
+      );
+    }
+  };
+
+  const handleRejectSubmission = async (subId: string) => {
+    if (!confirm("Are you sure you want to reject this submission?")) return;
+    try {
+      await rejectSubmission(subId);
+      showMessage("success", "Submission rejected.");
+    } catch (error: any) {
+      showMessage(
+        "error",
+        error.response?.data?.error || error.message || "Failed to reject submission"
+      );
+    }
+  };
+
+  // Get only STUDENT users for task assignment
+  const studentUsers = users.filter((u) => u.role === "STUDENT" && u.approved);
 
   const handleCreateAnnouncement = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1270,49 +1429,531 @@ export default function AdminDashboardPage() {
 
         {/* Tasks Tab */}
         {activeTab === "tasks" && (
-          <Card className="bg-gray-900 border-gray-800 max-w-2xl">
-            <CardHeader>
-              <CardTitle className="text-white">Create Task</CardTitle>
-              <CardDescription>Create a new task for students</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleCreateTask} className="space-y-4">
-                <div className="space-y-2">
-                  <Label>Task Title</Label>
-                  <Input
-                    placeholder="e.g. Solve 5 DP problems"
-                    value={taskTitle}
-                    onChange={(e) => setTaskTitle(e.target.value)}
-                    className="bg-gray-800 border-gray-700"
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Description</Label>
-                  <textarea
-                    placeholder="Task details..."
-                    value={taskDesc}
-                    onChange={(e) => setTaskDesc(e.target.value)}
-                    className="w-full h-24 px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-sm resize-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Points</Label>
-                  <Input
-                    type="number"
-                    placeholder="100"
-                    value={taskPoints}
-                    onChange={(e) => setTaskPoints(Number(e.target.value))}
-                    className="bg-gray-800 border-gray-700"
-                    required
-                  />
-                </div>
-                <Button type="submit" disabled={loading} className="w-full">
-                  {loading ? "Creating..." : "Create Task"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+          <div className="space-y-6">
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Create Task Form */}
+              <Card className="bg-gray-900 border-gray-800">
+                <CardHeader>
+                  <CardTitle className="text-white">Create Task</CardTitle>
+                  <CardDescription>Create a new task for students</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <form onSubmit={handleCreateTask} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Task Title *</Label>
+                      <Input
+                        placeholder="e.g. Solve 5 DP problems"
+                        value={taskTitle}
+                        onChange={(e) => setTaskTitle(e.target.value)}
+                        className="bg-gray-800 border-gray-700"
+                        required
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Description</Label>
+                      <textarea
+                        placeholder="Task details..."
+                        value={taskDesc}
+                        onChange={(e) => setTaskDesc(e.target.value)}
+                        className="w-full h-24 px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-sm resize-none"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Points *</Label>
+                        <Input
+                          type="number"
+                          min="0"
+                          placeholder="100"
+                          value={taskPoints}
+                          onChange={(e) => setTaskPoints(Number(e.target.value))}
+                          className="bg-gray-800 border-gray-700"
+                          required
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Due Date</Label>
+                        <Input
+                          type="datetime-local"
+                          value={taskDueDate}
+                          onChange={(e) => setTaskDueDate(e.target.value)}
+                          className="bg-gray-800 border-gray-700"
+                        />
+                      </div>
+                    </div>
+                    
+                    {/* Assignment Type */}
+                    <div className="space-y-3">
+                      <Label>Assign To</Label>
+                      <div className="flex gap-4">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="assignmentType"
+                            checked={taskAssignmentType === "all"}
+                            onChange={() => {
+                              setTaskAssignmentType("all");
+                              setSelectedUserIds([]);
+                            }}
+                            className="text-blue-500"
+                          />
+                          <Globe className="h-4 w-4 text-gray-400" />
+                          <span className="text-sm">All Students</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="assignmentType"
+                            checked={taskAssignmentType === "specific"}
+                            onChange={() => setTaskAssignmentType("specific")}
+                            className="text-blue-500"
+                          />
+                          <UserIcon className="h-4 w-4 text-gray-400" />
+                          <span className="text-sm">Specific Users</span>
+                        </label>
+                      </div>
+                      
+                      {taskAssignmentType === "specific" && (
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap gap-2 p-2 bg-gray-800 border border-gray-700 rounded-md min-h-[40px]">
+                            {selectedUserIds.length === 0 ? (
+                              <span className="text-sm text-gray-500">No users selected</span>
+                            ) : (
+                              selectedUserIds.map((userId) => {
+                                const u = studentUsers.find((su) => su.id === userId);
+                                return (
+                                  <span
+                                    key={userId}
+                                    className="inline-flex items-center gap-1 px-2 py-1 bg-blue-500/20 text-blue-400 rounded text-xs"
+                                  >
+                                    {u?.email || userId}
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedUserIds(selectedUserIds.filter((id) => id !== userId))}
+                                      className="hover:text-blue-300"
+                                    >
+                                      <X className="h-3 w-3" />
+                                    </button>
+                                  </span>
+                                );
+                              })
+                            )}
+                          </div>
+                          <Select
+                            value=""
+                            onValueChange={(userId) => {
+                              if (!selectedUserIds.includes(userId)) {
+                                setSelectedUserIds([...selectedUserIds, userId]);
+                              }
+                            }}
+                          >
+                            <SelectTrigger className="bg-gray-800 border-gray-700">
+                              <SelectValue placeholder="Add a student..." />
+                            </SelectTrigger>
+                            <SelectContent className="bg-gray-800 border-gray-700 max-h-48">
+                              {studentUsers
+                                .filter((u) => !selectedUserIds.includes(u.id))
+                                .map((u) => (
+                                  <SelectItem key={u.id} value={u.id}>
+                                    {u.email}
+                                  </SelectItem>
+                                ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <Button type="submit" disabled={loading || tasksLoading} className="w-full">
+                      {loading || tasksLoading ? "Creating..." : "Create Task"}
+                    </Button>
+                  </form>
+                </CardContent>
+              </Card>
+
+              {/* Tasks List */}
+              <Card className="bg-gray-900 border-gray-800">
+                <CardHeader>
+                  <CardTitle className="text-white">Existing Tasks</CardTitle>
+                  <CardDescription>{tasks.length} task{tasks.length !== 1 ? "s" : ""} created</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3 max-h-[500px] overflow-y-auto">
+                    {tasksLoading ? (
+                      <p className="text-gray-500 text-center py-4">Loading...</p>
+                    ) : tasks.length === 0 ? (
+                      <p className="text-gray-500 text-center py-4">No tasks yet</p>
+                    ) : (
+                      tasks.map((task) => {
+                        const isExpanded = expandedTaskId === task.id;
+                        const isEditing = editingTaskId === task.id;
+                        const isOverdue = task.dueDate && new Date(task.dueDate) < new Date();
+                        
+                        return (
+                          <div key={task.id} className="bg-gray-800/50 rounded-lg overflow-hidden">
+                            {isEditing ? (
+                              // Edit Mode
+                              <div className="p-4 space-y-3">
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-gray-400">Title *</Label>
+                                  <Input
+                                    value={editTaskTitle}
+                                    onChange={(e) => setEditTaskTitle(e.target.value)}
+                                    className="bg-gray-800 border-gray-700 h-9"
+                                    required
+                                  />
+                                </div>
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-gray-400">Description</Label>
+                                  <textarea
+                                    value={editTaskDesc}
+                                    onChange={(e) => setEditTaskDesc(e.target.value)}
+                                    className="w-full h-20 px-3 py-2 bg-gray-800 border border-gray-700 rounded-md text-sm resize-none"
+                                  />
+                                </div>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-2">
+                                    <Label className="text-xs text-gray-400">Points</Label>
+                                    <Input
+                                      type="number"
+                                      min="0"
+                                      value={editTaskPoints}
+                                      onChange={(e) => setEditTaskPoints(Number(e.target.value))}
+                                      className="bg-gray-800 border-gray-700 h-9"
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <Label className="text-xs text-gray-400">Due Date</Label>
+                                    <Input
+                                      type="datetime-local"
+                                      value={editTaskDueDate}
+                                      onChange={(e) => setEditTaskDueDate(e.target.value)}
+                                      className="bg-gray-800 border-gray-700 h-9"
+                                    />
+                                  </div>
+                                </div>
+                                
+                                {/* Edit Assignment Type */}
+                                <div className="space-y-2">
+                                  <Label className="text-xs text-gray-400">Assign To</Label>
+                                  <div className="flex gap-4">
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        checked={editTaskAssignmentType === "all"}
+                                        onChange={() => {
+                                          setEditTaskAssignmentType("all");
+                                          setEditSelectedUserIds([]);
+                                        }}
+                                        className="text-blue-500"
+                                      />
+                                      <span className="text-xs">All</span>
+                                    </label>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="radio"
+                                        checked={editTaskAssignmentType === "specific"}
+                                        onChange={() => setEditTaskAssignmentType("specific")}
+                                        className="text-blue-500"
+                                      />
+                                      <span className="text-xs">Specific</span>
+                                    </label>
+                                  </div>
+                                  {editTaskAssignmentType === "specific" && (
+                                    <Select
+                                      value=""
+                                      onValueChange={(userId) => {
+                                        if (!editSelectedUserIds.includes(userId)) {
+                                          setEditSelectedUserIds([...editSelectedUserIds, userId]);
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="bg-gray-800 border-gray-700 h-8 text-xs">
+                                        <SelectValue placeholder="Add user..." />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-gray-800 border-gray-700 max-h-32">
+                                        {studentUsers
+                                          .filter((u) => !editSelectedUserIds.includes(u.id))
+                                          .map((u) => (
+                                            <SelectItem key={u.id} value={u.id} className="text-xs">
+                                              {u.email}
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                  )}
+                                  {editTaskAssignmentType === "specific" && editSelectedUserIds.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {editSelectedUserIds.map((userId) => {
+                                        const u = studentUsers.find((su) => su.id === userId);
+                                        return (
+                                          <span
+                                            key={userId}
+                                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-xs"
+                                          >
+                                            {u?.email?.split("@")[0] || userId.slice(0, 8)}
+                                            <button
+                                              type="button"
+                                              onClick={() => setEditSelectedUserIds(editSelectedUserIds.filter((id) => id !== userId))}
+                                              className="hover:text-blue-300"
+                                            >
+                                              <X className="h-3 w-3" />
+                                            </button>
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <div className="flex gap-2 pt-2">
+                                  <Button
+                                    size="sm"
+                                    onClick={() => handleSaveEditTask(task.id)}
+                                    disabled={!editTaskTitle || tasksLoading}
+                                    className="gap-1"
+                                  >
+                                    <Check className="h-4 w-4" />
+                                    Save
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={handleCancelEditTask}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              // View Mode
+                              <>
+                                <div className="p-4">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <p className="font-medium text-white truncate">{task.title}</p>
+                                        <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-xs font-medium">
+                                          {task.points} pts
+                                        </span>
+                                        {task.assignedTo && task.assignedTo.length > 0 ? (
+                                          <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded text-xs">
+                                            {task.assignedTo.length} user{task.assignedTo.length !== 1 ? "s" : ""}
+                                          </span>
+                                        ) : (
+                                          <span className="px-2 py-0.5 bg-green-500/20 text-green-400 rounded text-xs">
+                                            All
+                                          </span>
+                                        )}
+                                      </div>
+                                      {task.description && (
+                                        <p className="text-sm text-gray-400 mt-1 line-clamp-2">
+                                          {task.description}
+                                        </p>
+                                      )}
+                                      <div className="flex items-center gap-3 mt-2 text-xs text-gray-500">
+                                        {task.dueDate && (
+                                          <span className={isOverdue ? "text-red-400" : ""}>
+                                            Due: {new Date(task.dueDate).toLocaleString()}
+                                            {isOverdue && " (Overdue)"}
+                                          </span>
+                                        )}
+                                        <span>
+                                          Created: {new Date(task.createdAt).toLocaleDateString()}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-1">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleToggleSubmissions(task.id)}
+                                        className="h-8 w-8 p-0"
+                                        title="View Submissions"
+                                      >
+                                        {isExpanded ? (
+                                          <ChevronUp className="h-4 w-4" />
+                                        ) : (
+                                          <ChevronDown className="h-4 w-4" />
+                                        )}
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleStartEditTask(task)}
+                                        className="h-8 w-8 p-0"
+                                        title="Edit"
+                                      >
+                                        <Pencil className="h-4 w-4" />
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        onClick={() => handleDeleteTask(task.id)}
+                                        className="h-8 w-8 p-0 text-red-400 hover:text-red-300"
+                                        title="Delete"
+                                      >
+                                        <X className="h-4 w-4" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                </div>
+                                
+                                {/* Submissions Panel */}
+                                {isExpanded && (
+                                  <div className="border-t border-gray-700 bg-gray-900/50 p-4">
+                                    <h4 className="text-sm font-medium text-gray-300 mb-3">
+                                      Submissions ({taskSubmissions.length})
+                                    </h4>
+                                    {submissionsLoading ? (
+                                      <p className="text-sm text-gray-500">Loading submissions...</p>
+                                    ) : taskSubmissions.length === 0 ? (
+                                      <p className="text-sm text-gray-500">No submissions yet</p>
+                                    ) : (
+                                      <div className="space-y-2">
+                                        {taskSubmissions.map((sub) => {
+                                          const isLate = task.dueDate && new Date(sub.createdAt) > new Date(task.dueDate);
+                                          return (
+                                            <div
+                                              key={sub.id}
+                                              className="flex items-center justify-between gap-2 p-2 bg-gray-800 rounded text-sm"
+                                            >
+                                              <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                  <span className="text-gray-300 truncate">
+                                                    {sub.user?.email || sub.userId}
+                                                  </span>
+                                                  <span
+                                                    className={`px-2 py-0.5 rounded text-xs font-medium ${getSubmissionStatusColor(sub.status)}`}
+                                                  >
+                                                    {sub.status}
+                                                  </span>
+                                                  {sub.status === "VERIFIED" && (
+                                                    <span className="text-xs text-purple-400">
+                                                      +{sub.points} pts
+                                                    </span>
+                                                  )}
+                                                  {isLate && (
+                                                    <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded text-xs">
+                                                      Late
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="flex items-center gap-2 mt-1">
+                                                  <a
+                                                    href={sub.link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="text-xs text-blue-400 hover:underline truncate max-w-[200px]"
+                                                  >
+                                                    {sub.link}
+                                                  </a>
+                                                  <span className="text-xs text-gray-500">
+                                                    {new Date(sub.createdAt).toLocaleString()}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                              {sub.status === "PENDING" && (
+                                                <div className="flex gap-1">
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => handleOpenVerifyModal(sub, task.points)}
+                                                    className="h-7 text-xs gap-1 text-green-400 border-green-400/50 hover:bg-green-400/10"
+                                                  >
+                                                    <Check className="h-3 w-3" />
+                                                    Verify
+                                                  </Button>
+                                                  <Button
+                                                    size="sm"
+                                                    variant="outline"
+                                                    onClick={() => handleRejectSubmission(sub.id)}
+                                                    className="h-7 text-xs gap-1 text-red-400 border-red-400/50 hover:bg-red-400/10"
+                                                  >
+                                                    <X className="h-3 w-3" />
+                                                    Reject
+                                                  </Button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+            
+            {/* Verify Modal */}
+            {verifyModalOpen && selectedSubmission && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                <Card className="bg-gray-900 border-gray-700 w-full max-w-md mx-4">
+                  <CardHeader>
+                    <CardTitle className="text-white">Verify Submission</CardTitle>
+                    <CardDescription>
+                      Award points for this submission
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="text-sm text-gray-400">
+                      <p><strong>User:</strong> {selectedSubmission.user?.email || selectedSubmission.userId}</p>
+                      <p className="mt-1">
+                        <strong>Link:</strong>{" "}
+                        <a
+                          href={selectedSubmission.link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-400 hover:underline"
+                        >
+                          {selectedSubmission.link}
+                        </a>
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Points to Award</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={verifyPoints}
+                        onChange={(e) => setVerifyPoints(Number(e.target.value))}
+                        className="bg-gray-800 border-gray-700"
+                      />
+                      <p className="text-xs text-gray-500">
+                        Default task points. Adjust if needed.
+                      </p>
+                    </div>
+                    <div className="flex gap-2 pt-2">
+                      <Button
+                        onClick={handleVerifySubmission}
+                        className="flex-1 gap-1"
+                      >
+                        <Check className="h-4 w-4" />
+                        Verify & Award {verifyPoints} pts
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          setVerifyModalOpen(false);
+                          setSelectedSubmission(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Announcements Tab */}

@@ -36,22 +36,28 @@ model Task {
   title       String
   description String
   points      Int          @default(0)
-  assignedTo  String?
+  assignedTo  Json?        // String[] - null = open to all, array = specific user IDs
   dueDate     DateTime?
   createdAt   DateTime     @default(now())
   submissions Submission[]
 }
 
 model Submission {
-  id        String   @id @default(cuid())
+  id        String           @id @default(cuid())
   taskId    String
   userId    String
   link      String
-  verified  Boolean  @default(false)
-  points    Int      @default(0)
-  createdAt DateTime @default(now())
-  task      Task     @relation(fields: [taskId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  status    SubmissionStatus @default(PENDING)
+  points    Int              @default(0)
+  createdAt DateTime         @default(now())
+  task      Task             @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User             @relation(fields: [userId], references: [id])
+}
+
+enum SubmissionStatus {
+  PENDING
+  VERIFIED
+  REJECTED
 }
 
 model Contest {

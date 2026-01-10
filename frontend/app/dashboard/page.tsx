@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/useAuthStore";
+import { useTaskStore } from "@/store/useTaskStore";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,6 +21,9 @@ import {
   LogOut,
   Play,
   ExternalLink,
+  CheckSquare,
+  Medal,
+  ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
 import {
@@ -27,6 +31,7 @@ import {
   getSessionStatus,
   Session,
 } from "@/lib/sessionService";
+import { getTaskStatus } from "@/lib/taskService";
 
 interface Profile {
   name: string;
@@ -56,6 +61,16 @@ export default function DashboardPage() {
   const isAuthenticated = useAuthStore((state) => !!state.token);
   const hasHydrated = useAuthStore((state) => state._hasHydrated);
   const router = useRouter();
+
+  // Task store
+  const {
+    tasks,
+    userPoints,
+    leaderboard,
+    fetchTasks,
+    fetchUserPoints,
+    fetchLeaderboard,
+  } = useTaskStore();
 
   const [profile, setProfile] = useState<Profile | null>(null);
   const [contests, setContests] = useState<Contest[]>([]);
@@ -105,6 +120,13 @@ export default function DashboardPage() {
             });
           setNextSession(upcomingOrLive[0] || null);
         }
+
+        // Fetch tasks data
+        await Promise.allSettled([
+          fetchTasks(),
+          fetchUserPoints(),
+          fetchLeaderboard("all"),
+        ]);
       } catch (error) {
         console.error("Error fetching dashboard data", error);
       } finally {
@@ -113,7 +135,7 @@ export default function DashboardPage() {
     };
 
     fetchData();
-  }, [isAuthenticated]);
+  }, [isAuthenticated, fetchTasks, fetchUserPoints, fetchLeaderboard]);
 
   if (!hasHydrated || loading) {
     return (
@@ -143,6 +165,12 @@ export default function DashboardPage() {
               <Button variant="outline" className="gap-2">
                 <Play className="w-4 h-4" />
                 Contests
+              </Button>
+            </Link>
+            <Link href="/tasks">
+              <Button variant="outline" className="gap-2">
+                <CheckSquare className="w-4 h-4" />
+                Tasks
               </Button>
             </Link>
             <Link href="/sessions">
@@ -289,6 +317,217 @@ export default function DashboardPage() {
                   </p>
                 </>
               )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Tasks & Points Row */}
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {/* My Tasks Widget */}
+          <Card className="bg-card border-border lg:col-span-2">
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle className="text-card-foreground flex items-center gap-2">
+                  <CheckSquare className="h-5 w-5" />
+                  My Tasks
+                </CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  Complete tasks to earn points
+                </CardDescription>
+              </div>
+              <Link href="/tasks">
+                <Button variant="outline" size="sm" className="gap-1">
+                  View All
+                  <ArrowRight className="h-4 w-4" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {(() => {
+                const pendingCount = tasks.filter((t) =>
+                  t.userSubmissions?.some((s) => s.status === "PENDING")
+                ).length;
+                const completedCount = tasks.filter((t) =>
+                  t.userSubmissions?.some((s) => s.status === "VERIFIED")
+                ).length;
+                const availableCount = tasks.filter((t) => {
+                  const status = getTaskStatus(t);
+                  return status.canSubmit && !t.userSubmissions?.length;
+                }).length;
+                
+                // Get recent available tasks
+                const recentTasks = tasks
+                  .filter((t) => {
+                    const status = getTaskStatus(t);
+                    return status.canSubmit;
+                  })
+                  .slice(0, 3);
+
+                return (
+                  <div className="space-y-4">
+                    {/* Stats */}
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="p-3 bg-blue-500/10 rounded-lg border border-blue-500/20">
+                        <div className="text-2xl font-bold text-blue-400">
+                          {availableCount}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Available</p>
+                      </div>
+                      <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                        <div className="text-2xl font-bold text-yellow-400">
+                          {pendingCount}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Pending</p>
+                      </div>
+                      <div className="p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+                        <div className="text-2xl font-bold text-green-400">
+                          {completedCount}
+                        </div>
+                        <p className="text-xs text-muted-foreground">Completed</p>
+                      </div>
+                    </div>
+
+                    {/* Recent Tasks */}
+                    {recentTasks.length > 0 ? (
+                      <div className="space-y-2">
+                        {recentTasks.map((task) => {
+                          const isOverdue = task.dueDate && new Date(task.dueDate) < new Date();
+                          return (
+                            <div
+                              key={task.id}
+                              className="flex items-center justify-between p-3 rounded-lg border border-border bg-background/50"
+                            >
+                              <div className="space-y-1 flex-1 min-w-0">
+                                <p className="font-medium leading-none text-foreground truncate">
+                                  {task.title}
+                                </p>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm text-purple-400">
+                                    {task.points} pts
+                                  </span>
+                                  {isOverdue && (
+                                    <span className="text-xs text-red-400">Overdue</span>
+                                  )}
+                                </div>
+                              </div>
+                              <Link href="/tasks">
+                                <Button variant="secondary" size="sm">
+                                  Submit
+                                </Button>
+                              </Link>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-sm">
+                        No tasks available at the moment.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
+
+          {/* Points & Leaderboard Widget */}
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <CardTitle className="text-card-foreground flex items-center gap-2">
+                <Trophy className="h-5 w-5 text-purple-400" />
+                Points & Rank
+              </CardTitle>
+              <CardDescription className="text-muted-foreground">
+                Your standing in the leaderboard
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {/* User's Points */}
+                <div className="p-4 bg-gradient-to-r from-purple-500/20 to-purple-600/10 rounded-lg border border-purple-500/30">
+                  <div className="text-3xl font-bold text-purple-400">
+                    {userPoints} pts
+                  </div>
+                  <p className="text-sm text-muted-foreground">Your total points</p>
+                </div>
+
+                {/* Mini Leaderboard - Top 3 */}
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                    Top Performers
+                  </p>
+                  {leaderboard.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      No leaderboard data yet
+                    </p>
+                  ) : (
+                    leaderboard.slice(0, 3).map((entry, idx) => {
+                      const isCurrentUser = entry.userId === user?.id;
+                      return (
+                        <div
+                          key={entry.userId}
+                          className={`flex items-center gap-3 p-2 rounded-lg ${
+                            isCurrentUser
+                              ? "bg-purple-500/10 border border-purple-500/30"
+                              : "bg-background/50"
+                          }`}
+                        >
+                          <div
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
+                              idx === 0
+                                ? "bg-yellow-500/20 text-yellow-400"
+                                : idx === 1
+                                ? "bg-gray-400/20 text-gray-400"
+                                : "bg-orange-500/20 text-orange-400"
+                            }`}
+                          >
+                            {idx + 1}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {entry.name || entry.email?.split("@")[0]}
+                              {isCurrentUser && (
+                                <span className="text-purple-400 ml-1">(You)</span>
+                              )}
+                            </p>
+                          </div>
+                          <div className="text-sm font-semibold text-purple-400">
+                            {entry.points}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+
+                {/* User's Rank if not in top 3 */}
+                {leaderboard.length > 0 &&
+                  !leaderboard.slice(0, 3).some((e) => e.userId === user?.id) && (
+                    <div className="pt-2 border-t border-border">
+                      {(() => {
+                        const userEntry = leaderboard.find(
+                          (e) => e.userId === user?.id
+                        );
+                        if (!userEntry) return null;
+                        return (
+                          <div className="flex items-center gap-3 p-2 bg-purple-500/10 rounded-lg border border-purple-500/30">
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-purple-500/20 text-purple-400">
+                              {userEntry.position}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">
+                                You
+                              </p>
+                            </div>
+                            <div className="text-sm font-semibold text-purple-400">
+                              {userEntry.points}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
+              </div>
             </CardContent>
           </Card>
         </div>
