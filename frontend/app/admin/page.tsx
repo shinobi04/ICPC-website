@@ -98,9 +98,12 @@ export default function AdminDashboardPage() {
   const [problemTags, setProblemTags] = useState("");
   const [problemTimeLimit, setProblemTimeLimit] = useState("1");
   const [problemMemoryLimit, setProblemMemoryLimit] = useState("256");
-  const [problemTestCases, setProblemTestCases] = useState("");
-  const [testCasesError, setTestCasesError] = useState<string | null>(null);
-  const [testCasesCount, setTestCasesCount] = useState<number>(0);
+  const [sampleTestCases, setSampleTestCases] = useState("");
+  const [sampleTestCasesError, setSampleTestCasesError] = useState<string | null>(null);
+  const [sampleTestCasesCount, setSampleTestCasesCount] = useState<number>(0);
+  const [hiddenTestCases, setHiddenTestCases] = useState("");
+  const [hiddenTestCasesError, setHiddenTestCasesError] = useState<string | null>(null);
+  const [hiddenTestCasesCount, setHiddenTestCasesCount] = useState<number>(0);
 
   const [sessionTitle, setSessionTitle] = useState("");
   const [sessionDetails, setSessionDetails] = useState("");
@@ -233,40 +236,46 @@ export default function AdminDashboardPage() {
   };
 
   // Validate test cases JSON in real-time
-  const validateTestCases = (value: string) => {
-    setProblemTestCases(value);
+  const validateTestCases = (
+    value: string,
+    setError: (e: string | null) => void,
+    setCount: (c: number) => void
+  ) => {
     if (!value.trim()) {
-      setTestCasesError(null);
-      setTestCasesCount(0);
+      setError(null);
+      setCount(0);
       return;
     }
     try {
       const parsed = JSON.parse(value);
       if (!Array.isArray(parsed)) {
-        setTestCasesError("Must be an array of test cases");
-        setTestCasesCount(0);
+        setError("Must be an array of test cases");
+        setCount(0);
         return;
       }
       for (let i = 0; i < parsed.length; i++) {
         if (typeof parsed[i].input !== "string" || typeof parsed[i].output !== "string") {
-          setTestCasesError(`Test case ${i + 1}: must have "input" and "output" as strings`);
-          setTestCasesCount(0);
+          setError(`Test case ${i + 1}: must have "input" and "output" as strings`);
+          setCount(0);
           return;
         }
       }
-      setTestCasesError(null);
-      setTestCasesCount(parsed.length);
+      setError(null);
+      setCount(parsed.length);
     } catch (e) {
-      setTestCasesError("Invalid JSON format");
-      setTestCasesCount(0);
+      setError("Invalid JSON format");
+      setCount(0);
     }
   };
 
-  const formatTestCasesJSON = () => {
-    if (!problemTestCases.trim()) return;
+  const formatTestCasesJSON = (
+    value: string,
+    setValue: (v: string) => void
+  ) => {
+    if (!value.trim()) return;
     try {
-      const parsed = JSON.parse(problemTestCases);
-      setProblemTestCases(JSON.stringify(parsed, null, 2));
+      const parsed = JSON.parse(value);
+      setValue(JSON.stringify(parsed, null, 2));
     } catch (e) {
       // Can't format invalid JSON
     }
@@ -278,15 +287,28 @@ export default function AdminDashboardPage() {
       showMessage("error", "Please select a contest");
       return;
     }
-    if (testCasesError) {
-      showMessage("error", "Please fix test cases JSON errors");
+    if (sampleTestCasesError) {
+      showMessage("error", "Please fix sample test cases JSON errors");
+      return;
+    }
+    if (hiddenTestCasesError) {
+      showMessage("error", "Please fix hidden test cases JSON errors");
+      return;
+    }
+    if (sampleTestCasesCount === 0) {
+      showMessage("error", "At least 1 sample test case is required");
       return;
     }
     setLoading(true);
     try {
-      let testCases: { input: string; output: string }[] = [];
-      if (problemTestCases.trim()) {
-        testCases = JSON.parse(problemTestCases);
+      let sampleTCs: { input: string; output: string }[] = [];
+      let hiddenTCs: { input: string; output: string }[] = [];
+      
+      if (sampleTestCases.trim()) {
+        sampleTCs = JSON.parse(sampleTestCases);
+      }
+      if (hiddenTestCases.trim()) {
+        hiddenTCs = JSON.parse(hiddenTestCases);
       }
       
       // Parse tags from comma-separated string
@@ -304,7 +326,8 @@ export default function AdminDashboardPage() {
           timeLimit: parseFloat(problemTimeLimit) || 1,
           memoryLimit: parseInt(problemMemoryLimit) || 256,
         },
-        testCases,
+        sampleTestCases: sampleTCs,
+        hiddenTestCases: hiddenTCs,
       });
       showMessage("success", "Problem added successfully!");
       setProblemName("");
@@ -313,9 +336,12 @@ export default function AdminDashboardPage() {
       setProblemTags("");
       setProblemTimeLimit("1");
       setProblemMemoryLimit("256");
-      setProblemTestCases("");
-      setTestCasesError(null);
-      setTestCasesCount(0);
+      setSampleTestCases("");
+      setSampleTestCasesError(null);
+      setSampleTestCasesCount(0);
+      setHiddenTestCases("");
+      setHiddenTestCasesError(null);
+      setHiddenTestCasesCount(0);
       fetchDataForTab("contests");
     } catch (error: any) {
       showMessage(
@@ -809,43 +835,87 @@ export default function AdminDashboardPage() {
                     </div>
                   </div>
 
-                  {/* Test Cases */}
+                  {/* Sample Test Cases */}
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
-                      <Label>Test Cases (JSON)</Label>
+                      <Label>Sample Test Cases (JSON) *</Label>
                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={formatTestCasesJSON}
+                        onClick={() => formatTestCasesJSON(sampleTestCases, setSampleTestCases)}
                         className="h-6 text-xs text-gray-400 hover:text-white"
                       >
                         Format JSON
                       </Button>
                     </div>
                     <p className="text-xs text-gray-500 mb-1">
-                      Format: {`[{"input": "...", "output": "..."}]`}
+                      Visible to users. At least 1 required. Format: {`[{"input": "...", "output": "..."}]`}
                     </p>
                     <textarea
                       placeholder={`[\n  {"input": "5\\n1 2 3 4 5", "output": "15"},\n  {"input": "3\\n1 2 3", "output": "6"}\n]`}
-                      value={problemTestCases}
-                      onChange={(e) => validateTestCases(e.target.value)}
-                      className={`w-full h-28 px-3 py-2 bg-gray-800 border rounded-md text-sm font-mono resize-none ${
-                        testCasesError 
+                      value={sampleTestCases}
+                      onChange={(e) => {
+                        setSampleTestCases(e.target.value);
+                        validateTestCases(e.target.value, setSampleTestCasesError, setSampleTestCasesCount);
+                      }}
+                      className={`w-full h-24 px-3 py-2 bg-gray-800 border rounded-md text-sm font-mono resize-none ${
+                        sampleTestCasesError 
                           ? "border-red-500 focus:border-red-500" 
-                          : problemTestCases.trim() && !testCasesError
+                          : sampleTestCases.trim() && !sampleTestCasesError
                           ? "border-green-500 focus:border-green-500"
                           : "border-gray-700"
                       }`}
                     />
-                    {testCasesError ? (
-                      <p className="text-xs text-red-400">{testCasesError}</p>
-                    ) : testCasesCount > 0 ? (
-                      <p className="text-xs text-green-400">Valid JSON - {testCasesCount} test case{testCasesCount > 1 ? "s" : ""}</p>
+                    {sampleTestCasesError ? (
+                      <p className="text-xs text-red-400">{sampleTestCasesError}</p>
+                    ) : sampleTestCasesCount > 0 ? (
+                      <p className="text-xs text-green-400">Valid JSON - {sampleTestCasesCount} sample test case{sampleTestCasesCount > 1 ? "s" : ""}</p>
+                    ) : (
+                      <p className="text-xs text-yellow-400">Required: At least 1 sample test case</p>
+                    )}
+                  </div>
+
+                  {/* Hidden Test Cases */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Hidden Test Cases (JSON)</Label>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => formatTestCasesJSON(hiddenTestCases, setHiddenTestCases)}
+                        className="h-6 text-xs text-gray-400 hover:text-white"
+                      >
+                        Format JSON
+                      </Button>
+                    </div>
+                    <p className="text-xs text-gray-500 mb-1">
+                      Hidden from users. Used for final judging. Optional.
+                    </p>
+                    <textarea
+                      placeholder={`[\n  {"input": "10000\\n...", "output": "..."}\n]`}
+                      value={hiddenTestCases}
+                      onChange={(e) => {
+                        setHiddenTestCases(e.target.value);
+                        validateTestCases(e.target.value, setHiddenTestCasesError, setHiddenTestCasesCount);
+                      }}
+                      className={`w-full h-24 px-3 py-2 bg-gray-800 border rounded-md text-sm font-mono resize-none ${
+                        hiddenTestCasesError 
+                          ? "border-red-500 focus:border-red-500" 
+                          : hiddenTestCases.trim() && !hiddenTestCasesError
+                          ? "border-green-500 focus:border-green-500"
+                          : "border-gray-700"
+                      }`}
+                    />
+                    {hiddenTestCasesError ? (
+                      <p className="text-xs text-red-400">{hiddenTestCasesError}</p>
+                    ) : hiddenTestCasesCount > 0 ? (
+                      <p className="text-xs text-green-400">Valid JSON - {hiddenTestCasesCount} hidden test case{hiddenTestCasesCount > 1 ? "s" : ""}</p>
                     ) : null}
                   </div>
 
-                  <Button type="submit" disabled={loading || !!testCasesError} className="w-full">
+                  <Button type="submit" disabled={loading || !!sampleTestCasesError || !!hiddenTestCasesError || sampleTestCasesCount === 0} className="w-full">
                     {loading ? "Adding..." : "Add Problem"}
                   </Button>
                 </form>

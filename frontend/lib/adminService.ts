@@ -164,7 +164,9 @@ export async function addProblemToContest(
       timeLimit?: number;
       memoryLimit?: number;
     };
-    testCases?: { input: string; output: string }[];
+    sampleTestCases?: { input: string; output: string }[];
+    hiddenTestCases?: { input: string; output: string }[];
+    testCases?: { input: string; output: string }[]; // Legacy support
   }
 ): Promise<any> {
   const response = await api.post(`/contests/${contestId}/problems`, problem);

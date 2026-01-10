@@ -3,6 +3,33 @@ import * as svc from "../services/contestService";
 import { success, fail } from "../utils/response";
 import * as judgeSvc from "../services/contestJudgeService";
 
+// Simple in-memory rate limiter for run code (10 runs per minute per user)
+const runCodeRateLimit = new Map<string, number[]>();
+const RATE_LIMIT_WINDOW_MS = 60 * 1000; // 1 minute
+const RATE_LIMIT_MAX_REQUESTS = 10;
+
+const checkRateLimit = (userId: string): { allowed: boolean; retryAfter?: number } => {
+  const now = Date.now();
+  const userRequests = runCodeRateLimit.get(userId) || [];
+  
+  // Remove requests outside the window
+  const validRequests = userRequests.filter(
+    (timestamp) => now - timestamp < RATE_LIMIT_WINDOW_MS
+  );
+  
+  if (validRequests.length >= RATE_LIMIT_MAX_REQUESTS) {
+    const oldestRequest = validRequests[0];
+    const retryAfter = Math.ceil((oldestRequest + RATE_LIMIT_WINDOW_MS - now) / 1000);
+    return { allowed: false, retryAfter };
+  }
+  
+  // Add current request
+  validRequests.push(now);
+  runCodeRateLimit.set(userId, validRequests);
+  
+  return { allowed: true };
+};
+
 export const create = async (req: Request, res: Response) => {
   try {
     const c = await svc.createContest(req.body);
@@ -134,6 +161,59 @@ export const getSubmission = async (req: any, res: Response) => {
       return fail(res, "Forbidden", 403);
 
     success(res, s);
+  } catch (err: any) {
+    fail(res, err.message);
+  }
+};
+
+/**
+ * Run code against sample test cases only (synchronous)
+ * Rate limited to 10 runs per minute per user
+ */
+export const runCode = async (req: any, res: Response) => {
+  try {
+    const contestId = req.params.id;
+    const { source, language_id, problemIdx } = req.body;
+    const userId = req.user.id;
+
+    // Check rate limit
+    const rateLimitResult = checkRateLimit(userId);
+    if (!rateLimitResult.allowed) {
+      res.set("Retry-After", String(rateLimitResult.retryAfter));
+      return fail(
+        res,
+        `Rate limit exceeded. Try again in ${rateLimitResult.retryAfter} seconds.`,
+        429
+      );
+    }
+
+    // Verify contest exists and is active
+    const contest = await svc.getContest(contestId);
+    if (!contest) {
+      return fail(res, "Contest not found", 404);
+    }
+
+    // Check if contest has started
+    const now = new Date();
+    if (contest.startTime > now) {
+      return fail(res, "Contest has not started yet", 400);
+    }
+
+    // Check if contest has ended (startTime + timer minutes)
+    const endTime = new Date(contest.startTime.getTime() + contest.timer * 60 * 1000);
+    if (now > endTime) {
+      return fail(res, "Contest has ended", 400);
+    }
+
+    // Run code against sample test cases
+    const result = await judgeSvc.runContestCode(
+      contestId,
+      problemIdx,
+      source,
+      language_id
+    );
+
+    success(res, result);
   } catch (err: any) {
     fail(res, err.message);
   }

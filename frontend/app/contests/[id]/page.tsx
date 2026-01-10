@@ -7,9 +7,11 @@ import {
   getContest,
   submitSolution,
   getMySubmissions,
+  runCode,
   Contest,
   ContestSubmission,
   Problem,
+  RunCodeResult,
 } from "@/lib/contestService";
 import { useAuthStore } from "@/store/useAuthStore";
 import {
@@ -52,6 +54,13 @@ export default function ContestDetailPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submissions, setSubmissions] = useState<ContestSubmission[]>([]);
   const [submissionError, setSubmissionError] = useState<string | null>(null);
+
+  // Run code state
+  const [running, setRunning] = useState(false);
+  const [runResult, setRunResult] = useState<RunCodeResult | null>(null);
+  const [runError, setRunError] = useState<string | null>(null);
+  const [lastRunTime, setLastRunTime] = useState<number>(0);
+  const RUN_COOLDOWN_MS = 6000; // 6 seconds between runs
 
   // Timer state
   const [timeRemaining, setTimeRemaining] = useState<number | null>(null);
@@ -210,6 +219,55 @@ export default function ContestDetailPage() {
       setSubmitting(false);
     }
   };
+
+  // Run code against sample test cases
+  const handleRunCode = async () => {
+    if (!code.trim()) {
+      setRunError("Please write some code before running");
+      return;
+    }
+
+    if (!contestStarted) {
+      setRunError("Contest has not started yet. Please wait.");
+      return;
+    }
+
+    if (contestEnded) {
+      setRunError("Contest has ended.");
+      return;
+    }
+
+    // Check cooldown
+    const now = Date.now();
+    if (now - lastRunTime < RUN_COOLDOWN_MS) {
+      const remaining = Math.ceil((RUN_COOLDOWN_MS - (now - lastRunTime)) / 1000);
+      setRunError(`Please wait ${remaining} seconds before running again`);
+      return;
+    }
+
+    setRunning(true);
+    setRunError(null);
+    setRunResult(null);
+
+    try {
+      const result = await runCode(contestId, selectedProblemIdx, code, languageId);
+      setRunResult(result);
+      setLastRunTime(Date.now());
+    } catch (err: any) {
+      // Check for rate limit error
+      if (err.response?.status === 429) {
+        const retryAfter = err.response?.headers?.["retry-after"] || 60;
+        setRunError(`Rate limit exceeded. Try again in ${retryAfter} seconds.`);
+      } else {
+        setRunError(err.response?.data?.message || "Failed to run code");
+      }
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  // Check if run button should be disabled (cooldown)
+  const isRunCooldown = Date.now() - lastRunTime < RUN_COOLDOWN_MS;
 
   const formatTime = (ms: number) => {
     const totalSeconds = Math.floor(ms / 1000);
@@ -530,11 +588,13 @@ export default function ContestDetailPage() {
                     {currentProblem.description || "No description available."}
                   </div>
 
-                  {currentProblem.testCases &&
-                    currentProblem.testCases.length > 0 && (
+                  {/* Sample Test Cases */}
+                  {(() => {
+                    const sampleTCs = currentProblem.sampleTestCases || currentProblem.testCases || [];
+                    return sampleTCs.length > 0 && (
                       <div className="mt-6">
                         <h3 className="text-lg font-semibold mb-3">Examples</h3>
-                        {currentProblem.testCases.map((tc, idx) => (
+                        {sampleTCs.map((tc, idx) => (
                           <div
                             key={idx}
                             className="mb-4 bg-gray-800/50 rounded-lg p-4"
@@ -558,7 +618,8 @@ export default function ContestDetailPage() {
                           </div>
                         ))}
                       </div>
-                    )}
+                    );
+                  })()}
                 </div>
               </>
             ) : (
@@ -590,19 +651,117 @@ export default function ContestDetailPage() {
                 </SelectContent>
               </Select>
 
-              <Button
-                onClick={handleSubmit}
-                disabled={submitting || contestEnded}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {submitting ? "Submitting..." : "Submit Solution"}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  onClick={handleRunCode}
+                  disabled={running || contestEnded || isRunCooldown}
+                  variant="outline"
+                  className="border-gray-600 hover:bg-gray-700"
+                >
+                  {running ? "Running..." : "Run Code"}
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={submitting || contestEnded}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {submitting ? "Submitting..." : "Submit Solution"}
+                </Button>
+              </div>
             </div>
 
             {/* Error message */}
             {submissionError && (
               <div className="mx-3 mt-3 p-2 bg-red-500/20 border border-red-500 rounded text-red-400 text-sm">
                 {submissionError}
+              </div>
+            )}
+            {runError && (
+              <div className="mx-3 mt-3 p-2 bg-red-500/20 border border-red-500 rounded text-red-400 text-sm">
+                {runError}
+              </div>
+            )}
+
+            {/* Run Code Result Panel */}
+            {runResult && (
+              <div className="mx-3 mt-3 p-3 bg-gray-800/50 border border-gray-700 rounded">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    {runResult.compileError ? (
+                      <span className="text-orange-400 font-medium">Compilation Error</span>
+                    ) : runResult.allPassed ? (
+                      <span className="text-green-400 font-medium">All Sample Tests Passed</span>
+                    ) : (
+                      <span className="text-red-400 font-medium">
+                        {runResult.passedCount}/{runResult.totalCount} Sample Tests Passed
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setRunResult(null)}
+                    className="text-gray-500 hover:text-gray-300 text-sm"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+
+                {/* Compilation Error */}
+                {runResult.compileError && (
+                  <pre className="p-2 bg-gray-900 rounded text-orange-400 text-xs overflow-x-auto whitespace-pre-wrap">
+                    {runResult.compileError}
+                  </pre>
+                )}
+
+                {/* First Failed Test Case (LeetCode style) */}
+                {!runResult.compileError && runResult.firstFailed && (
+                  <div className="space-y-2 mt-2">
+                    <div className="text-sm text-gray-400">
+                      Failed Test Case #{runResult.firstFailed.index + 1}
+                    </div>
+                    
+                    {runResult.firstFailed.error ? (
+                      <div className="p-2 bg-gray-900 rounded">
+                        <div className="text-xs text-gray-500 mb-1">Error:</div>
+                        <pre className="text-red-400 text-xs overflow-x-auto whitespace-pre-wrap">
+                          {runResult.firstFailed.error}
+                        </pre>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid grid-cols-1 gap-2">
+                          <div className="p-2 bg-gray-900 rounded">
+                            <div className="text-xs text-gray-500 mb-1">Input:</div>
+                            <pre className="text-gray-300 text-xs overflow-x-auto whitespace-pre-wrap">
+                              {runResult.firstFailed.input || "(hidden)"}
+                            </pre>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div className="p-2 bg-gray-900 rounded">
+                              <div className="text-xs text-gray-500 mb-1">Expected:</div>
+                              <pre className="text-green-400 text-xs overflow-x-auto whitespace-pre-wrap">
+                                {runResult.firstFailed.expected || "(hidden)"}
+                              </pre>
+                            </div>
+                            <div className="p-2 bg-gray-900 rounded">
+                              <div className="text-xs text-gray-500 mb-1">Actual:</div>
+                              <pre className="text-red-400 text-xs overflow-x-auto whitespace-pre-wrap">
+                                {runResult.firstFailed.actual || "(no output)"}
+                              </pre>
+                            </div>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Execution Stats */}
+                {!runResult.compileError && (runResult.time || runResult.memory) && (
+                  <div className="mt-2 text-xs text-gray-500 flex gap-4">
+                    {runResult.time && <span>Time: {runResult.time}s</span>}
+                    {runResult.memory && <span>Memory: {runResult.memory} KB</span>}
+                  </div>
+                )}
               </div>
             )}
 
@@ -621,15 +780,22 @@ export default function ContestDetailPage() {
             {problemSubmissions.length > 0 && (
               <div className="border-t border-gray-800 p-3 bg-gray-900/50">
                 <h3 className="text-sm font-semibold text-gray-400 mb-2">
-                  Latest Result
+                  Latest Submission
                 </h3>
                 <div className="bg-gray-800/50 rounded p-3">
-                  <div
-                    className={`font-medium ${getStatusColor(
-                      problemSubmissions[0].status
-                    )}`}
-                  >
-                    {problemSubmissions[0].status || "Pending..."}
+                  <div className="flex items-center justify-between">
+                    <div
+                      className={`font-medium ${getStatusColor(
+                        problemSubmissions[0].status
+                      )}`}
+                    >
+                      {problemSubmissions[0].status || "Pending..."}
+                    </div>
+                    {problemSubmissions[0].result?.passedCount !== undefined && (
+                      <div className="text-sm text-gray-400">
+                        {problemSubmissions[0].result.passedCount}/{problemSubmissions[0].result.totalCount} tests passed
+                      </div>
+                    )}
                   </div>
                   {problemSubmissions[0].result && (
                     <div className="mt-2 text-sm text-gray-400">
@@ -645,15 +811,22 @@ export default function ContestDetailPage() {
                       )}
                     </div>
                   )}
-                  {problemSubmissions[0].result?.stderr && (
-                    <pre className="mt-2 p-2 bg-gray-900 rounded text-red-400 text-xs overflow-x-auto">
-                      {problemSubmissions[0].result.stderr}
+                  {problemSubmissions[0].result?.compileError && (
+                    <pre className="mt-2 p-2 bg-gray-900 rounded text-orange-400 text-xs overflow-x-auto">
+                      {problemSubmissions[0].result.compileError}
                     </pre>
                   )}
-                  {problemSubmissions[0].result?.compile_output && (
-                    <pre className="mt-2 p-2 bg-gray-900 rounded text-orange-400 text-xs overflow-x-auto">
-                      {problemSubmissions[0].result.compile_output}
-                    </pre>
+                  {problemSubmissions[0].result?.firstFailed && !problemSubmissions[0].result.firstFailed.isHidden && (
+                    <div className="mt-2 text-xs">
+                      <div className="text-gray-500 mb-1">
+                        First failed: Test #{(problemSubmissions[0].result.firstFailed.index || 0) + 1}
+                      </div>
+                      {problemSubmissions[0].result.firstFailed.error && (
+                        <pre className="p-2 bg-gray-900 rounded text-red-400 overflow-x-auto">
+                          {problemSubmissions[0].result.firstFailed.error}
+                        </pre>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>

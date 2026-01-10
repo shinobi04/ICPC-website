@@ -46,6 +46,18 @@ router.post(
   ctrl.submit
 );
 
+// Run code against sample test cases (rate limited)
+router.post(
+  "/:id/run",
+  isAuthenticated,
+  [
+    body("source").isString().notEmpty(),
+    body("language_id").isInt(),
+    body("problemIdx").isInt(),
+  ],
+  ctrl.runCode
+);
+
 // Admin: list submissions for a contest
 router.get("/:id/submissions", isAuthenticated, isAdmin, ctrl.submissions);
 

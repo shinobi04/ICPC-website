@@ -93,8 +93,9 @@ model ContestSubmission {
   problemIdx Int
   user       User     @relation(fields: [userId], references: [id])
   userId     String
-  token      String?
-  result     Json?
+  token      String?  // Legacy single token (for backward compatibility)
+  tokens     String[] // Array of Judge0 tokens (one per test case)
+  result     Json?    // Aggregated result with per-test-case details
   status     String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
