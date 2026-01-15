@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuthStore } from "@/store/useAuthStore";
 import { useTaskStore } from "@/store/useTaskStore";
 import { Button } from "@/components/ui/button";
@@ -25,6 +26,7 @@ import {
   CheckCircle,
   XCircle,
   Loader2,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Task, getTaskStatus } from "@/lib/taskService";
@@ -295,17 +297,27 @@ export default function TasksPage() {
                       </div>
                     )}
 
-                    {/* Submit Button */}
-                    {status.canSubmit && (
-                      <Button
-                        onClick={() => handleOpenSubmitModal(task)}
-                        className="w-full gap-2"
-                        variant={submissionCount > 0 ? "outline" : "default"}
-                      >
-                        <Send className="h-4 w-4" />
-                        {submissionCount > 0 ? "Resubmit Solution" : "Submit Solution"}
-                      </Button>
-                    )}
+                    {/* Action Buttons */}
+                    <div className="flex items-center justify-between gap-2 pt-2">
+                      <Link href={`/tasks/${task.id}`}>
+                        <Button variant="ghost" size="sm" className="gap-2">
+                          <Eye className="h-4 w-4" />
+                          View Details
+                        </Button>
+                      </Link>
+                      
+                      {status.canSubmit && (
+                        <Button
+                          onClick={() => handleOpenSubmitModal(task)}
+                          size="sm"
+                          className="gap-2"
+                          variant={submissionCount > 0 ? "outline" : "default"}
+                        >
+                          <Send className="h-4 w-4" />
+                          {submissionCount > 0 ? "Resubmit" : "Submit"}
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               );

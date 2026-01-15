@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useAuthStore } from "@/store/useAuthStore";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +26,7 @@ import {
   ExternalLink,
   Users,
   CheckCircle,
+  Eye,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -137,37 +139,46 @@ function SessionCard({ session, userId, onRegister, registering }: SessionCardPr
         )}
       </CardContent>
 
-      <CardFooter className="pt-3">
-        {status === "live" && (
-          <Button onClick={handleJoin} className="w-full gap-2">
-            <ExternalLink className="h-4 w-4" />
-            Join Meeting
+      <CardFooter className="pt-3 flex items-center justify-between gap-2">
+        <Link href={`/sessions/${session.id}`}>
+          <Button variant="ghost" size="sm" className="gap-2">
+            <Eye className="h-4 w-4" />
+            View Details
           </Button>
-        )}
-        {status === "upcoming" && (
-          <>
-            {isRegistered ? (
-              <Button variant="secondary" className="w-full gap-2" disabled>
-                <CheckCircle className="h-4 w-4" />
-                Registered
-              </Button>
-            ) : (
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => onRegister(session.id)}
-                disabled={isRegistering}
-              >
-                {isRegistering ? "Registering..." : "Register"}
-              </Button>
-            )}
-          </>
-        )}
-        {status === "ended" && (
-          <p className="text-sm text-muted-foreground w-full text-center">
-            This session has ended
-          </p>
-        )}
+        </Link>
+        
+        <div className="flex-1 flex justify-end">
+          {status === "live" && (
+            <Button onClick={handleJoin} size="sm" className="gap-2">
+              <ExternalLink className="h-4 w-4" />
+              Join Meeting
+            </Button>
+          )}
+          {status === "upcoming" && (
+            <>
+              {isRegistered ? (
+                <Button variant="secondary" size="sm" className="gap-2" disabled>
+                  <CheckCircle className="h-4 w-4" />
+                  Registered
+                </Button>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onRegister(session.id)}
+                  disabled={isRegistering}
+                >
+                  {isRegistering ? "Registering..." : "Register"}
+                </Button>
+              )}
+            </>
+          )}
+          {status === "ended" && (
+            <p className="text-sm text-muted-foreground">
+              Session ended
+            </p>
+          )}
+        </div>
       </CardFooter>
     </Card>
   );
