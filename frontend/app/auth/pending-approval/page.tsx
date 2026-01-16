@@ -32,6 +32,7 @@ function PendingApprovalContent() {
 
         // Check if approved
         if (status.approved) {
+          clearInterval(pollInterval); // Stop polling immediately
           setIsApproved(true);
           toast.success("Your account has been approved!");
 
