@@ -1,4 +1,4 @@
-import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction, RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import prisma from "../models/prismaClient";
 import { User } from "@prisma/client";
@@ -13,12 +13,13 @@ export interface AuthRequest extends Request {
   user?: User;
 }
 
-export const isAuthenticated = async (
-  req: AuthRequest,
+export const isAuthenticated: RequestHandler = async (
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  const auth = req.headers.authorization;
+  const authReq = req as AuthRequest;
+  const auth = authReq.headers.authorization;
   if (!auth) {
     return res.status(401).json({ message: "No token provided" });
   }
@@ -41,44 +42,49 @@ export const isAuthenticated = async (
         .json({ message: "User not approved or not found" });
     }
 
-    req.user = user;
+    authReq.user = user;
     next();
   } catch (err) {
     return res.status(401).json({ message: "Invalid token" });
   }
 };
 
-export const isAdmin = (
-  req: AuthRequest,
+export const isAdmin: RequestHandler = (
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  if (!req.user) return res.status(401).json({ message: "Not authenticated" });
-  if (req.user.role !== "ADMIN")
+  const authReq = req as AuthRequest;
+  if (!authReq.user)
+    return res.status(401).json({ message: "Not authenticated" });
+  if (authReq.user.role !== "ADMIN")
     return res.status(403).json({ message: "Admin only" });
   next();
 };
 
-export const isAlumni = (
-  req: AuthRequest,
+export const isAlumni: RequestHandler = (
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  if (!req.user) return res.status(401).json({ message: "Not authenticated" });
-  if (req.user.role !== "ALUMNI")
+  const authReq = req as AuthRequest;
+  if (!authReq.user)
+    return res.status(401).json({ message: "Not authenticated" });
+  if (authReq.user.role !== "ALUMNI")
     return res.status(403).json({ message: "Alumni only" });
   next();
 };
 
 // Optional authentication - allows both authenticated and unauthenticated access
 // If token is provided and valid, req.user will be set; otherwise, proceeds without user
-export const optionalAuth = async (
-  req: AuthRequest,
+export const optionalAuth: RequestHandler = async (
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {
-  const auth = req.headers.authorization;
-  
+  const authReq = req as AuthRequest;
+  const auth = authReq.headers.authorization;
+
   // No token provided - proceed without user
   if (!auth || !auth.toLowerCase().startsWith("bearer ")) {
     return next();
@@ -93,7 +99,7 @@ export const optionalAuth = async (
     });
 
     if (user && user.approved) {
-      req.user = user;
+      authReq.user = user;
     }
   } catch (err) {
     // Invalid token - proceed without user (don't fail the request)

@@ -190,11 +190,12 @@ export default function ProfilePage() {
         router.push("/dashboard");
       }
     } catch (error: unknown) {
-      const err = error as { response?: { data?: { error?: string } }; message?: string };
+      const err = error as {
+        response?: { data?: { error?: string } };
+        message?: string;
+      };
       toast.error(
-        err.response?.data?.error ||
-          err.message ||
-          "Failed to save profile"
+        err.response?.data?.error || err.message || "Failed to save profile"
       );
     } finally {
       setSaving(false);
@@ -449,7 +450,8 @@ export default function ProfilePage() {
                 Alumni Information
               </CardTitle>
               <CardDescription>
-                Professional details visible to current students. Graduation year is required.
+                Professional details visible to current students. Graduation
+                year is required.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -487,7 +489,9 @@ export default function ProfilePage() {
                   </SelectContent>
                 </Select>
                 {errors.graduationYear && (
-                  <p className="text-xs text-red-400">{errors.graduationYear}</p>
+                  <p className="text-xs text-red-400">
+                    {errors.graduationYear}
+                  </p>
                 )}
               </div>
 
@@ -574,8 +578,7 @@ export default function ProfilePage() {
               Competitive Programming Handles
             </CardTitle>
             <CardDescription>
-              Add your usernames on various platforms. All fields are
-              optional.
+              Add your usernames on various platforms. All fields are optional.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -602,8 +605,14 @@ export default function ProfilePage() {
         <div className="flex justify-end">
           <Button
             type="submit"
-            disabled={saving || !name || !branch || (!isAlumni && !year) || (isAlumni && !graduationYear)}
-            className="gap-2 min-w-[150px]"
+            disabled={
+              saving ||
+              !name ||
+              !branch ||
+              (!isAlumni && !year) ||
+              (isAlumni && !graduationYear)
+            }
+            className="gap-2 min-w-37.5"
           >
             {saving ? (
               <>
