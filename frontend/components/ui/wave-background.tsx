@@ -47,6 +47,12 @@ export function Waves({
     const noiseRef = useRef<((x: number, y: number) => number) | null>(null)
     const rafRef = useRef<number | null>(null)
     const boundingRef = useRef<DOMRect | null>(null)
+    const strokeColorRef = useRef(strokeColor)
+
+    // Keep strokeColor ref in sync
+    useEffect(() => {
+        strokeColorRef.current = strokeColor
+    }, [strokeColor])
 
     useEffect(() => {
         if (!containerRef.current || !svgRef.current) return
@@ -117,7 +123,7 @@ export function Waves({
                 path.classList.add('a__line')
                 path.classList.add('js-line')
                 path.setAttribute('fill', 'none')
-                path.setAttribute('stroke', strokeColor)
+                path.setAttribute('stroke', strokeColorRef.current)
                 path.setAttribute('stroke-width', '1')
 
                 svg.appendChild(path)
@@ -304,7 +310,7 @@ export function Waves({
             window.removeEventListener('mousemove', onMouseMove)
             container.removeEventListener('touchmove', onTouchMove)
         }
-    }, [strokeColor])
+    }, [])
 
     return (
         <div
